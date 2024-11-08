@@ -1,7 +1,7 @@
 import chess
 from typing import Tuple, List
 import re
-from config.constants import STRENGTH_COLORS, EVALUATION_SYMBOLS
+from config.constants import STRENGTH_COLORS
 
 
 def is_valid_fen(fen: str) -> bool:
@@ -82,26 +82,10 @@ def parse_moves_with_strength(
     return white_moves, black_moves, white_strengths, black_strengths
 
 
-def get_position_evaluation_symbol(evaluation_text: str) -> str:
-    """Extract position evaluation symbol from assessment text"""
-    text = evaluation_text.lower()
-
-    if "winning for white" in text or "decisive advantage for white" in text:
-        return EVALUATION_SYMBOLS["decisive_white"]
-    elif "winning for black" in text or "decisive advantage for black" in text:
-        return EVALUATION_SYMBOLS["decisive_black"]
-    elif "much better for white" in text:
-        return EVALUATION_SYMBOLS["white_much_better"]
-    elif "much better for black" in text:
-        return EVALUATION_SYMBOLS["black_much_better"]
-    elif "better for white" in text:
-        return EVALUATION_SYMBOLS["white_better"]
-    elif "better for black" in text:
-        return EVALUATION_SYMBOLS["black_better"]
-    elif "equal" in text or "balanced" in text:
-        return EVALUATION_SYMBOLS["equal"]
-    elif "unclear" in text or "complex" in text:
-        return EVALUATION_SYMBOLS["unclear"]
-
-    return ""  # Return empty string if no clear evaluation found
+def make_move(fen: str, move: str) -> str:
+    """Make a move on the board and return the new FEN"""
+    board = chess.Board(fen)
+    move_obj = chess.Move.from_uci(move)
+    board.push(move_obj)
+    return board.fen()
 

@@ -1,7 +1,7 @@
 import streamlit as st
 import chess
 import chess.svg
-from utils.chess_utils import is_valid_fen, parse_moves_with_strength
+from utils.chess_utils import is_valid_fen, parse_moves_with_strength, make_move
 from utils.api_utils import initialize_chat_model, analyze_position
 from config.constants import CHESS_PROMPT, DEFAULT_FEN, STRENGTH_COLORS
 
@@ -13,14 +13,17 @@ def render_board(fen: str, size: int = 300) -> str:
 
 
 def render_move_analysis(
-    move: str, strength: str, fen: str, explanation: str, move_number: int
+    move: str, strength: str, initial_fen: str, explanation: str, move_number: int
 ):
     """Render a single move analysis with board"""
+    # Calculate the position after the move
+    resulting_fen = make_move(initial_fen, move)
+
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        # Display the board
-        st.components.v1.html(render_board(fen), height=320)
+        # Display the board after the move
+        st.components.v1.html(render_board(resulting_fen), height=320)
 
     with col2:
         # Create a colored box for the move and strength
@@ -73,47 +76,33 @@ def render_analysis(api_key: str, model_option: str):
                                 st.markdown("## White's Ideas")
                                 moves = section.split("\n")[1:]  # Skip header
                                 for i, move in enumerate(moves, 1):
-                                    if "->" in move:  # Check if move contains FEN
-                                        move_parts = move.split("->")
-                                        move_info = move_parts[0].strip()
-                                        fen = move_parts[1].split("-")[0].strip()
-                                        explanation = "-".join(
-                                            move_parts[1].split("-")[1:]
-                                        ).strip()
-
-                                        # Extract UCI move and strength
-                                        uci = move_info.split()[0].strip('"')
+                                    if '"' in move:  # Check if it's a move line
+                                        # Extract move and strength
+                                        parts = move.split('"')
+                                        uci = parts[1]  # Move in UCI notation
                                         strength = (
-                                            move_info.split("(")[1]
-                                            .split(")")[0]
-                                            .strip()
+                                            move.split("(")[1].split(")")[0].strip()
                                         )
+                                        explanation = move.split("-")[-1].strip()
 
                                         render_move_analysis(
-                                            uci, strength, fen, explanation, i
+                                            uci, strength, fen_input, explanation, i
                                         )
 
                             elif section.startswith("BLACK MOVES:"):
                                 st.markdown("## Black's Ideas")
                                 moves = section.split("\n")[1:]  # Skip header
                                 for i, move in enumerate(moves, 1):
-                                    if "->" in move:
-                                        move_parts = move.split("->")
-                                        move_info = move_parts[0].strip()
-                                        fen = move_parts[1].split("-")[0].strip()
-                                        explanation = "-".join(
-                                            move_parts[1].split("-")[1:]
-                                        ).strip()
-
-                                        uci = move_info.split()[0].strip('"')
+                                    if '"' in move:
+                                        parts = move.split('"')
+                                        uci = parts[1]
                                         strength = (
-                                            move_info.split("(")[1]
-                                            .split(")")[0]
-                                            .strip()
+                                            move.split("(")[1].split(")")[0].strip()
                                         )
+                                        explanation = move.split("-")[-1].strip()
 
                                         render_move_analysis(
-                                            uci, strength, fen, explanation, i
+                                            uci, strength, fen_input, explanation, i
                                         )
 
                             elif section.startswith("STRATEGIC THEMES:"):
