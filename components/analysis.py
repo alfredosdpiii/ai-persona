@@ -1,108 +1,146 @@
 import streamlit as st
+import chess
+import chess.svg
 from utils.chess_utils import is_valid_fen, parse_moves_with_strength
 from utils.api_utils import initialize_chat_model, analyze_position
-from utils.visualization import render_chess_board_with_visualization
-from config.constants import CHESS_PROMPT, DEFAULT_FEN
+from config.constants import CHESS_PROMPT, DEFAULT_FEN, STRENGTH_COLORS
+
+
+def render_board(fen: str, size: int = 300) -> str:
+    """Render a chess board from FEN notation"""
+    board = chess.Board(fen)
+    return chess.svg.board(board=board, size=size)
+
+
+def render_move_analysis(
+    move: str, strength: str, fen: str, explanation: str, move_number: int
+):
+    """Render a single move analysis with board"""
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        # Display the board
+        st.components.v1.html(render_board(fen), height=320)
+
+    with col2:
+        # Create a colored box for the move and strength
+        color = STRENGTH_COLORS.get(strength.lower(), "#808080")
+        st.markdown(
+            f"""
+            <div style="padding: 10px; background-color: {color}; border-radius: 5px; margin-bottom: 10px;">
+                <span style="color: white; font-size: 18px; font-weight: bold;">
+                    {move_number}. {move} ({strength})
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.write(explanation)
 
 
 def render_analysis(api_key: str, model_option: str):
     """Render the analysis page"""
-    st.title("Position Analysis")
+    st.title("Grandmaster Ilya's Analysis Board")
 
-    col1, col2 = st.columns([2, 1])
+    fen_input = st.text_input(
+        "Enter position (FEN notation):",
+        value=DEFAULT_FEN,
+        help="Enter a valid FEN notation string",
+    )
 
-    with col1:
-        # FEN input with immediate board update
-        fen_input = st.text_input(
-            "Enter chess position in FEN notation:",
-            value=DEFAULT_FEN,
-            help="Enter a valid FEN notation string representing your chess position",
-            key="fen_input",
-        )
+    if fen_input:
+        if not is_valid_fen(fen_input):
+            st.error("Invalid FEN notation. Please check your input.")
+        else:
+            # Show initial position
+            st.subheader("Current Position")
+            st.components.v1.html(render_board(fen_input, size=400), height=420)
 
-        # Show current board state immediately when FEN changes
-        if fen_input:
-            if not is_valid_fen(fen_input):
-                st.error("Invalid FEN notation. Please check your input.")
-            else:
-                # Render initial board without analysis
-                initial_board = render_chess_board_with_visualization(
-                    fen_input, [], [], [], []
-                )
-                st.components.v1.html(initial_board, height=600)
+            if st.button("Analyze Position", key="analyze"):
+                with st.spinner("Grandmaster Ilya is analyzing the position..."):
+                    try:
+                        chat_model = initialize_chat_model(model_option, api_key)
+                        analysis = analyze_position(chat_model, CHESS_PROMPT, fen_input)
 
-                if st.button("Analyze Position", key="analyze"):
-                    with st.spinner("Analyzing position... (this may take a moment)"):
-                        try:
-                            # Initialize chat model and analyze position
-                            chat_model = initialize_chat_model(model_option, api_key)
-                            analysis = analyze_position(
-                                chat_model, CHESS_PROMPT, fen_input
-                            )
+                        # Split analysis into sections
+                        sections = analysis.split("\n\n")
+                        for section in sections:
+                            if section.startswith("ASSESSMENT:"):
+                                st.markdown("## Position Assessment")
+                                st.markdown(section.replace("ASSESSMENT:", "").strip())
 
-                            # Parse moves and strengths
-                            (
-                                white_moves,
-                                black_moves,
-                                white_strengths,
-                                black_strengths,
-                            ) = parse_moves_with_strength(analysis)
+                            elif section.startswith("WHITE MOVES:"):
+                                st.markdown("## White's Ideas")
+                                moves = section.split("\n")[1:]  # Skip header
+                                for i, move in enumerate(moves, 1):
+                                    if "->" in move:  # Check if move contains FEN
+                                        move_parts = move.split("->")
+                                        move_info = move_parts[0].strip()
+                                        fen = move_parts[1].split("-")[0].strip()
+                                        explanation = "-".join(
+                                            move_parts[1].split("-")[1:]
+                                        ).strip()
 
-                            # Render interactive board with analysis
-                            analysis_board = render_chess_board_with_visualization(
-                                fen_input,
-                                white_moves,
-                                black_moves,
-                                white_strengths,
-                                black_strengths,
-                            )
-                            st.components.v1.html(analysis_board, height=800)
+                                        # Extract UCI move and strength
+                                        uci = move_info.split()[0].strip('"')
+                                        strength = (
+                                            move_info.split("(")[1]
+                                            .split(")")[0]
+                                            .strip()
+                                        )
 
-                            st.markdown("### Grandmaster Ilya's Analysis")
-                            st.markdown(analysis)
+                                        render_move_analysis(
+                                            uci, strength, fen, explanation, i
+                                        )
 
-                            # Store analysis in session state
-                            if "messages" not in st.session_state:
-                                st.session_state.messages = []
+                            elif section.startswith("BLACK MOVES:"):
+                                st.markdown("## Black's Ideas")
+                                moves = section.split("\n")[1:]  # Skip header
+                                for i, move in enumerate(moves, 1):
+                                    if "->" in move:
+                                        move_parts = move.split("->")
+                                        move_info = move_parts[0].strip()
+                                        fen = move_parts[1].split("-")[0].strip()
+                                        explanation = "-".join(
+                                            move_parts[1].split("-")[1:]
+                                        ).strip()
 
-                            st.session_state.messages.append(
-                                {
-                                    "role": "assistant",
-                                    "content": analysis,
-                                    "model": model_option,
-                                    "white_moves": white_moves,
-                                    "black_moves": black_moves,
-                                    "white_strengths": white_strengths,
-                                    "black_strengths": black_strengths,
-                                }
-                            )
+                                        uci = move_info.split()[0].strip('"')
+                                        strength = (
+                                            move_info.split("(")[1]
+                                            .split(")")[0]
+                                            .strip()
+                                        )
 
-                        except Exception as e:
-                            st.error(f"An error occurred during analysis: {str(e)}")
+                                        render_move_analysis(
+                                            uci, strength, fen, explanation, i
+                                        )
 
-    with col2:
-        render_previous_analyses(fen_input)
+                            elif section.startswith("STRATEGIC THEMES:"):
+                                st.markdown("## Strategic Themes")
+                                st.markdown(
+                                    section.replace("STRATEGIC THEMES:", "").strip()
+                                )
+
+                            elif section.startswith("RUSSIAN CHESS WISDOM:"):
+                                st.markdown("## Russian Chess Wisdom")
+                                st.markdown(
+                                    section.replace("RUSSIAN CHESS WISDOM:", "").strip()
+                                )
+
+                    except Exception as e:
+                        st.error(f"An error occurred during analysis: {str(e)}")
 
 
 def render_previous_analyses(fen_input: str):
     """Render previous analyses section"""
     st.write("### Previous Analyses")
     if st.session_state.get("messages"):
-        for idx, msg in enumerate(
-            st.session_state.messages[-5:], 1
-        ):  # Show last 5 analyses
+        for idx, msg in enumerate(st.session_state.messages[-5:], 1):
             with st.expander(
                 f"Analysis {len(st.session_state.messages)-5+idx} ({msg.get('model', 'Unknown Model')})"
             ):
                 st.markdown(msg["content"])
-                if st.button(f"Replay Analysis #{idx}", key=f"replay_{idx}"):
-                    html_content = render_chess_board_with_visualization(
-                        fen_input,
-                        msg.get("white_moves", []),
-                        msg.get("black_moves", []),
-                        msg.get("white_strengths", []),
-                        msg.get("black_strengths", []),
-                    )
-                    st.components.v1.html(html_content, height=800)
     else:
         st.info("No previous analyses yet. Try analyzing a position!")
+
