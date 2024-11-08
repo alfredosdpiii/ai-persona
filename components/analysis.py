@@ -7,43 +7,95 @@ from config.constants import CHESS_PROMPT, DEFAULT_FEN, STRENGTH_COLORS
 import re
 
 
+def clean_fen(fen_text: str) -> str:
+    """Clean and validate FEN notation."""
+    # Remove any trailing periods
+    fen = fen_text.rstrip(".")
+
+    # Validate basic FEN structure
+    fen_parts = fen.split()
+    if len(fen_parts) == 6:  # Complete FEN
+        return fen
+
+    # Try to fix incomplete FEN
+    if len(fen_parts) < 6:
+        # Add missing parts if needed
+        if len(fen_parts) >= 2:  # Has at least position and active color
+            while len(fen_parts) < 6:
+                if len(fen_parts) == 2:
+                    fen_parts.append("KQkq")  # Castling rights
+                elif len(fen_parts) == 3:
+                    fen_parts.append("-")  # En passant
+                elif len(fen_parts) == 4:
+                    fen_parts.append("0")  # Halfmove clock
+                elif len(fen_parts) == 5:
+                    fen_parts.append("1")  # Fullmove number
+            return " ".join(fen_parts)
+
+    return fen
+
+
 def parse_move(move_text: str) -> tuple:
     """
-    Parse a move text into its components by working backwards.
+    Advanced move parser that handles various formats and edge cases.
     Returns (uci_move, strength, explanation, fen)
     """
     try:
-        # If it starts with "Could not parse move from:", clean it up first
-        if move_text.startswith("Could not parse move from:"):
-            move_text = move_text.split(": ", 1)[1]
+        # Remove the "Could not parse move from:" prefix if present
+        if "Could not parse move from:" in move_text:
+            move_text = move_text.split("Could not parse move from:", 1)[1].strip()
 
-        # Split from the end
-        # First get the FEN which is always at the end
-        fen_pattern = r"(?:.*?)([rk][^\s]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))(?:\s*|$)"
-        fen_match = re.search(fen_pattern, move_text)
-        if fen_match:
-            fen = fen_match.group(1)
-            # Remove the FEN part from move text
-            move_text = move_text[: move_text.rfind(fen)].strip()
-        else:
-            fen = None
+        # Extract move using multiple patterns
+        move_patterns = [
+            r'"([a-h][1-8][a-h][1-8])"',  # Quoted UCI
+            r"[^a-h]([a-h][1-8][a-h][1-8])[^a-h]",  # Unquoted UCI
+            r'"([KQRBN][a-h]?[1-8]?[a-h][1-8])"',  # Quoted algebraic
+            r"[^a-h]([KQRBN][a-h]?[1-8]?[a-h][1-8])[^a-h]",  # Unquoted algebraic
+        ]
 
-        # Now find the last occurrence of a move number and work from there
-        move_pattern = r'(\d+)\.\s*(?:")?([a-h][1-8][a-h][1-8])(?:")?\s*\(([A-Z]+)\)'
-        move_match = re.search(move_pattern, move_text)
+        uci_move = None
+        for pattern in move_patterns:
+            match = re.search(pattern, move_text)
+            if match:
+                uci_move = match.group(1)
+                break
 
-        if not move_match:
-            return None, None, f"Could not parse move format from: {move_text}", None
+        # Extract strength - look for text in parentheses
+        strength_match = re.search(r"\(([A-Z]+)\)", move_text)
+        if not strength_match:
+            return None, None, "Could not find move strength", None
+        strength = strength_match.group(1)
 
-        move_num, uci_move, strength = move_match.groups()
+        # Find FEN - look for chess position pattern at the end
+        fen_patterns = [
+            r"(?:position (?:becomes|will be|is|changes to)|FEN:)\s*(r[^\s\.]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))",
+            r"(r[^\s\.]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))\s*\.",
+            r"(r[^\s\.]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))\s*$",
+        ]
 
-        # Get the explanation - everything between strength and FEN
+        fen = None
+        for pattern in fen_patterns:
+            match = re.search(pattern, move_text)
+            if match:
+                fen = clean_fen(match.group(1))
+                break
+
+        # Extract explanation - everything between strength and FEN/end
         explanation_text = move_text.split(f"({strength})")[-1]
-        # Clean up the explanation
+        # Remove FEN part from explanation
+        if fen:
+            explanation_text = explanation_text.split(fen)[0]
+
+        # Clean up explanation
+        explanation = explanation_text.strip(" -").strip()
         explanation = re.sub(
-            r"The position (?:becomes|will be|is|changes to).*$", "", explanation_text
+            r"The position (?:becomes|will be|is|changes to).*$", "", explanation
         )
-        explanation = explanation.strip(" -").strip()
+        explanation = re.sub(r"FEN:.*$", "", explanation).strip()
+
+        # Final validation
+        if not uci_move:
+            return None, None, "Could not parse move notation", None
 
         return uci_move, strength, explanation, fen
 
@@ -57,7 +109,8 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
     uci_move, strength, explanation, fen = parse_move(move_text)
 
     if not uci_move:
-        st.warning(explanation)
+        st.error(f"Move {move_number} parsing error: {explanation}")
+        st.code(move_text)  # Show the problematic text for debugging
         return
 
     # If no FEN was provided in the analysis, calculate it
@@ -78,7 +131,7 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
             st.components.v1.html(board_html, height=320)
 
     with col2:
-        # Create colored header for move with custom styling
+        # Create colored header for move
         color = STRENGTH_COLORS.get(strength, "#808080")
         st.markdown(
             f"""
@@ -94,14 +147,13 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
                     {move_number}. {uci_move} ({strength})
                 </span>
             </div>
-            <div style="font-size: 16px; margin-bottom: 16px;">
-                {explanation}
-            </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # Show FEN in an expander for verification
+        st.write(explanation)
+
+        # Show FEN in an expander
         with st.expander("Show FEN"):
             st.code(fen)
 
