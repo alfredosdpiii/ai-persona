@@ -9,73 +9,46 @@ import re
 
 def parse_move(move_text: str) -> tuple:
     """
-    Parse a move text into its components.
+    Parse a move text into its components by working backwards.
     Returns (uci_move, strength, explanation, fen)
     """
     try:
-        # First try to handle the case where the move starts with a number
+        # If it starts with "Could not parse move from:", clean it up first
         if move_text.startswith("Could not parse move from:"):
-            # Extract the actual move text from the error message
             move_text = move_text.split(": ", 1)[1]
 
-        # Extract move in quotes
-        move_match = re.search(r'"([a-h][1-8][a-h][1-8])"', move_text)
-        if not move_match:
-            # Try to find plain UCI move format
-            move_match = re.search(r"(\d+)\.\s*([a-h][1-8][a-h][1-8])\s", move_text)
-            if move_match:
-                uci_move = move_match.group(2)
-            else:
-                return None, None, f"Could not parse move from: {move_text}", None
-        else:
-            uci_move = move_match.group(1)
-
-        # Extract strength in parentheses
-        strength_match = re.search(r"\(([A-Z]+)\)", move_text)
-        if not strength_match:
-            return None, None, f"Could not parse strength from: {move_text}", None
-
-        strength = strength_match.group(1)
-
-        # Extract FEN - now handling more complex FEN patterns
-        fen_match = re.search(
-            r"(?:position (?:becomes|will be|is|changes to)|FEN:|position:)\s*(r[^\s]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))",
-            move_text,
-        )
+        # Split from the end
+        # First get the FEN which is always at the end
+        fen_pattern = r"(?:.*?)([rk][^\s]+(?:\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+))(?:\s*|$)"
+        fen_match = re.search(fen_pattern, move_text)
         if fen_match:
             fen = fen_match.group(1)
+            # Remove the FEN part from move text
+            move_text = move_text[: move_text.rfind(fen)].strip()
         else:
-            # Try to find just the raw FEN pattern
-            fen_match = re.search(
-                r"([kr][^\s]+\s+[bw]\s+(?:K?Q?k?q?|-)\s+(?:-|[a-h][36])\s+\d+\s+\d+)",
-                move_text,
-            )
-            fen = fen_match.group(1) if fen_match else None
+            fen = None
 
-        # Extract explanation - everything after the dash until FEN or end
-        explanation_match = re.search(
-            r"-\s*([^-]+?)(?=\s*(?:The position|FEN:|position:|r\d|$))", move_text
+        # Now find the last occurrence of a move number and work from there
+        move_pattern = r'(\d+)\.\s*(?:")?([a-h][1-8][a-h][1-8])(?:")?\s*\(([A-Z]+)\)'
+        move_match = re.search(move_pattern, move_text)
+
+        if not move_match:
+            return None, None, f"Could not parse move format from: {move_text}", None
+
+        move_num, uci_move, strength = move_match.groups()
+
+        # Get the explanation - everything between strength and FEN
+        explanation_text = move_text.split(f"({strength})")[-1]
+        # Clean up the explanation
+        explanation = re.sub(
+            r"The position (?:becomes|will be|is|changes to).*$", "", explanation_text
         )
-        explanation = (
-            explanation_match.group(1).strip() if explanation_match else move_text
-        )
+        explanation = explanation.strip(" -").strip()
 
         return uci_move, strength, explanation, fen
 
     except Exception as e:
         st.debug(f"Error parsing move text: {move_text}\nError: {str(e)}")
-        # Try simpler parsing as fallback
-        try:
-            # Look for simple move pattern at start of text
-            simple_move_match = re.search(
-                r"(\d+)\.\s*([a-h][1-8][a-h][1-8])\s*\(([A-Z]+)\)", move_text
-            )
-            if simple_move_match:
-                move_num, uci_move, strength = simple_move_match.groups()
-                explanation = move_text.split(")")[-1].strip()
-                return uci_move, strength, explanation, None
-        except:
-            pass
         return None, None, f"Error parsing move: {str(e)}", None
 
 
@@ -95,7 +68,7 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
             st.error(f"Error calculating position for move {uci_move}: {str(e)}")
             return
 
-    # Create columns for board and explanation
+    # Create columns for board and move info
     col1, col2 = st.columns([1, 2])
 
     with col1:
@@ -105,7 +78,7 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
             st.components.v1.html(board_html, height=320)
 
     with col2:
-        # Create colored header for move with cleaner styling
+        # Create colored header for move with custom styling
         color = STRENGTH_COLORS.get(strength, "#808080")
         st.markdown(
             f"""
@@ -121,17 +94,14 @@ def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
                     {move_number}. {uci_move} ({strength})
                 </span>
             </div>
+            <div style="font-size: 16px; margin-bottom: 16px;">
+                {explanation}
+            </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # Clean up and display the explanation
-        cleaned_explanation = re.sub(
-            r"(?:The position|FEN:|position:).*$", "", explanation
-        ).strip()
-        st.write(cleaned_explanation)
-
-        # Optionally display FEN in small text for debugging
+        # Show FEN in an expander for verification
         with st.expander("Show FEN"):
             st.code(fen)
 
