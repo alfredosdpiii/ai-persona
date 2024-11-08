@@ -32,18 +32,19 @@ def render_chess_board_with_visualization(
     board = chess.Board(fen)
     board_svg = chess.svg.board(board=board, size=size, coordinates=True)
 
-    # Import JavaScript and CSS from static files
-    with open("static/js/board.js", "r") as js_file:
-        js_content = js_file.read()
-
-    with open("static/css/styles.css", "r") as css_file:
-        css_content = css_file.read()
+    # Initialize moves as empty lists if None
+    white_moves = white_moves or []
+    black_moves = black_moves or []
+    white_strengths = white_strengths or []
+    black_strengths = black_strengths or []
 
     html_content = f"""
     <div id="chess-container" style="position: relative; width: {size}px; margin: auto;">
-        <style>{css_content}</style>
+        <style>
+        {open('static/css/styles.css').read()}
+        </style>
         
-        <div id="board-container">
+        <div id="board-container" style="position: relative;">
             {board_svg}
         </div>
         
@@ -53,7 +54,8 @@ def render_chess_board_with_visualization(
             <button onclick="toggleAutoPlay()" id="autoplay-button" class="control-button">Auto Play</button>
             <div class="speed-control">
                 <label>Speed:</label>
-                <input type="range" min="0.5" max="2" step="0.1" value="1" onchange="updateSpeed(this.value)">
+                <input type="range" min="0.5" max="2" step="0.1" value="1" 
+                       oninput="updateSpeed(this.value)" class="speed-slider">
             </div>
         </div>
         
@@ -69,9 +71,7 @@ def render_chess_board_with_visualization(
         </div>
         
         <script>
-        {js_content}
-        let currentSpeed = 1;
-        let autoPlayInterval = null;
+        {open('static/js/board.js').read()}
         const moves = {json.dumps({
             'white': list(zip(white_moves, white_strengths)),
             'black': list(zip(black_moves, black_strengths))
