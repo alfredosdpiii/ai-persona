@@ -7,61 +7,86 @@ from config.constants import CHESS_PROMPT, DEFAULT_FEN, STRENGTH_COLORS
 import re
 
 
-def render_board(fen: str, size: int = 300) -> str:
-    """Render a chess board from FEN notation"""
+def parse_move(move_text: str) -> tuple:
+    """
+    Parse a move text into its components.
+    Returns (uci_move, strength, explanation, fen)
+    """
     try:
-        board = chess.Board(fen)
-        return chess.svg.board(board=board, size=size)
+        # Extract move in quotes
+        move_match = re.search(r'"([a-h][1-8][a-h][1-8])"', move_text)
+        if not move_match:
+            return None, None, f"Could not parse move from: {move_text}", None
+
+        # Extract strength in parentheses
+        strength_match = re.search(r"\(([A-Z]+)\)", move_text)
+        if not strength_match:
+            return None, None, f"Could not parse strength from: {move_text}", None
+
+        # Extract FEN if present
+        fen_match = re.search(r"position (?:becomes|will be|is) (r[^\s]+)", move_text)
+
+        uci_move = move_match.group(1)
+        strength = strength_match.group(1)
+        explanation = (
+            move_text.split("-")[-1].strip() if "-" in move_text else move_text
+        )
+        fen = fen_match.group(1) if fen_match else None
+
+        return uci_move, strength, explanation, fen
+
     except Exception as e:
-        st.error(f"Error rendering board: {str(e)}")
-        return None
+        return None, None, f"Error parsing move: {str(e)}", None
 
 
 def render_move_with_board(move_text: str, initial_fen: str, move_number: int):
     """Render a single move analysis with board"""
-    try:
-        # Extract move details using regex
-        pattern = (
-            r'"([a-h][1-8][a-h][1-8])" \(([A-Z]+)\) - (.+?)(?=\. The (new )?position|$)'
-        )
-        match = re.search(pattern, move_text)
+    uci_move, strength, explanation, fen = parse_move(move_text)
 
-        if not match:
-            st.warning(f"Could not parse move: {move_text}")
+    if not uci_move:
+        st.warning(explanation)
+        return
+
+    # If no FEN was provided in the analysis, calculate it
+    if not fen:
+        try:
+            fen = make_move(initial_fen, uci_move)
+        except Exception as e:
+            st.error(f"Error calculating position: {str(e)}")
             return
 
-        uci_move, strength, explanation = match.groups()
+    # Create columns for board and explanation
+    col1, col2 = st.columns([1, 2])
 
-        # Calculate resulting position
-        resulting_position = make_move(initial_fen, uci_move)
+    with col1:
+        # Display board after move
+        board_html = render_board(fen)
+        if board_html:
+            st.components.v1.html(board_html, height=320)
 
-        # Create columns for board and explanation
-        col1, col2 = st.columns([1, 2])
+    with col2:
+        # Create colored header for move
+        color = STRENGTH_COLORS.get(strength, "#808080")
+        st.markdown(
+            f"""
+            <div style="padding: 10px; background-color: {color}; 
+                       border-radius: 5px; margin-bottom: 10px;">
+                <span style="color: white; font-size: 18px; font-weight: bold;">
+                    {move_number}. {uci_move} ({strength})
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        with col1:
-            # Display board after move
-            board_html = render_board(resulting_position)
-            if board_html:
-                st.components.v1.html(board_html, height=320)
-
-        with col2:
-            # Create colored header for move
-            color = STRENGTH_COLORS.get(strength, "#808080")
-            st.markdown(
-                f"""
-                <div style="padding: 10px; background-color: {color}; 
-                           border-radius: 5px; margin-bottom: 10px;">
-                    <span style="color: white; font-size: 18px; font-weight: bold;">
-                        {move_number}. {uci_move} ({strength})
-                    </span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.write(explanation)
-
-    except Exception as e:
-        st.error(f"Error rendering move: {str(e)}")
+        # Clean up and display the explanation
+        cleaned_explanation = explanation.split("FEN")[
+            0
+        ].strip()  # Remove FEN notation from display
+        cleaned_explanation = re.sub(
+            r"The (new )?position (becomes|will be|is) r[^\s]+", "", cleaned_explanation
+        )
+        st.write(cleaned_explanation)
 
 
 def render_analysis(api_key: str, model_option: str):
@@ -137,16 +162,15 @@ def render_analysis(api_key: str, model_option: str):
 
                     except Exception as e:
                         st.error(f"An error occurred during analysis: {str(e)}")
-                        st.error(f"Analysis text: {analysis}")
+                        st.error(f"Raw analysis text: {analysis}")
 
 
-def render_previous_analyses(fen_input: str):
-    """Render previous analyses section"""
-    st.write("### Previous Analyses")
-    if st.session_state.get("messages"):
-        for idx, msg in enumerate(st.session_state.messages[-5:], 1):
-            with st.expander(f"Analysis {len(st.session_state.messages)-5+idx}"):
-                st.markdown(msg["content"])
-    else:
-        st.info("No previous analyses yet. Try analyzing a position!")
+def render_board(fen: str, size: int = 300) -> str:
+    """Render a chess board from FEN notation"""
+    try:
+        board = chess.Board(fen)
+        return chess.svg.board(board=board, size=size)
+    except Exception as e:
+        st.error(f"Error rendering board: {str(e)}")
+        return None
 
