@@ -54,6 +54,16 @@ st.markdown(
 with st.sidebar:
     st.title("♟️ Chess Analysis")
     openai.api_key = st.text_input("Enter OpenAI API token:", type="password")
+    model_option = st.selectbox(
+        "Select GPT Model:",
+        options=[
+            "gpt-4-1106-preview",  # Latest GPT-4 Turbo
+            "gpt-4",  # Standard GPT-4
+            "gpt-3.5-turbo",  # GPT-3.5 Turbo
+        ],
+        help="Select the OpenAI model to use for analysis. GPT-4 provides more detailed analysis but costs more.",
+    )
+
     if not (openai.api_key.startswith("sk-")):
         st.warning("Please enter your OpenAI API token!", icon="⚠️")
     else:
@@ -90,7 +100,6 @@ def is_valid_fen(fen):
 def render_chess_board(fen):
     board = chess.Board(fen)
     svg_board = chess.svg.board(board=board, size=400)
-    # Wrap the SVG in HTML and use components.html
     html_content = f"""
         <div style="display: flex; justify-content: center; width: 100%;">
             {svg_board}
@@ -160,7 +169,9 @@ elif options == "Analysis":
                     with st.spinner("Analyzing position... (this may take a moment)"):
                         try:
                             chat = ChatOpenAI(
-                                temperature=0.7, openai_api_key=openai.api_key
+                                model=model_option,
+                                temperature=0.7,
+                                openai_api_key=openai.api_key,
                             )
 
                             prompt = ChatPromptTemplate.from_template(CHESS_PROMPT)
@@ -174,7 +185,11 @@ elif options == "Analysis":
 
                             # Store the analysis in session state
                             st.session_state.messages.append(
-                                {"role": "assistant", "content": analysis}
+                                {
+                                    "role": "assistant",
+                                    "content": analysis,
+                                    "model": model_option,
+                                }
                             )
                         except Exception as e:
                             st.error(f"An error occurred during analysis: {str(e)}")
@@ -182,8 +197,12 @@ elif options == "Analysis":
     with col2:
         st.write("### Previous Analyses")
         if st.session_state.messages:
-            for msg in st.session_state.messages[-5:]:  # Show last 5 analyses
-                with st.expander(f"Analysis {len(st.session_state.messages)}"):
+            for idx, msg in enumerate(
+                st.session_state.messages[-5:], 1
+            ):  # Show last 5 analyses
+                with st.expander(
+                    f"Analysis {len(st.session_state.messages)-5+idx} ({msg.get('model', 'Unknown Model')})"
+                ):
                     st.markdown(msg["content"])
         else:
             st.info("No previous analyses yet. Try analyzing a position!")
@@ -208,7 +227,7 @@ elif options == "About":
         - Educational insights with concrete examples
         
         ### Technical Details:
-        - Powered by OpenAI's language models
+        - Powered by OpenAI's advanced language models (GPT-4)
         - Uses python-chess for position validation
         - Interactive board visualization
         - FEN notation support
@@ -222,6 +241,11 @@ elif options == "About":
         - En passant targets
         - Halfmove clock
         - Fullmove number
+        
+        ### Model Information:
+        - GPT-4 Turbo: Best for detailed analysis and complex positions
+        - GPT-4: High-quality analysis with consistent performance
+        - GPT-3.5 Turbo: Quick analysis for simpler positions
         """)
 
     with col2:
@@ -237,5 +261,6 @@ elif options == "About":
 # Footer
 st.markdown("""
 ---
-Created with ♟️ by  Bryan/AI republic/Generative AI Labs
+Created with ♟️ by Bryan/AI republic/Generative AI Labs
 """)
+
