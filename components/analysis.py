@@ -2,7 +2,7 @@ import streamlit as st
 from utils.chess_utils import is_valid_fen, parse_moves_with_strength
 from utils.api_utils import initialize_chat_model, analyze_position
 from utils.visualization import render_chess_board_with_visualization
-from config.constants import CHESS_PROMPT
+from config.constants import CHESS_PROMPT, DEFAULT_FEN
 
 
 def render_analysis(api_key: str, model_option: str):
@@ -12,16 +12,25 @@ def render_analysis(api_key: str, model_option: str):
     col1, col2 = st.columns([2, 1])
 
     with col1:
+        # FEN input with immediate board update
         fen_input = st.text_input(
             "Enter chess position in FEN notation:",
-            value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            value=DEFAULT_FEN,
             help="Enter a valid FEN notation string representing your chess position",
+            key="fen_input",
         )
 
+        # Show current board state immediately when FEN changes
         if fen_input:
             if not is_valid_fen(fen_input):
                 st.error("Invalid FEN notation. Please check your input.")
             else:
+                # Render initial board without analysis
+                initial_board = render_chess_board_with_visualization(
+                    fen_input, [], [], [], []
+                )
+                st.components.v1.html(initial_board, height=600)
+
                 if st.button("Analyze Position", key="analyze"):
                     with st.spinner("Analyzing position... (this may take a moment)"):
                         try:
@@ -39,16 +48,15 @@ def render_analysis(api_key: str, model_option: str):
                                 black_strengths,
                             ) = parse_moves_with_strength(analysis)
 
-                            # Render interactive board
-                            html_content = render_chess_board_with_visualization(
+                            # Render interactive board with analysis
+                            analysis_board = render_chess_board_with_visualization(
                                 fen_input,
                                 white_moves,
                                 black_moves,
                                 white_strengths,
                                 black_strengths,
                             )
-
-                            st.components.v1.html(html_content, height=800)
+                            st.components.v1.html(analysis_board, height=800)
 
                             st.markdown("### Grandmaster Ilya's Analysis")
                             st.markdown(analysis)
