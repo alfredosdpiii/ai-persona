@@ -399,7 +399,27 @@ st.set_page_config(page_title="Chess Grandmaster Ilya", page_icon="♟️", layo
 # Sidebar
 with st.sidebar:
     st.title("♟️ Chess Analysis")
-    openai.api_key = st.text_input("Enter OpenAI API token:", type="password")
+
+    # API Key Form
+    with st.form(key="api_key_form"):
+        api_key = st.text_input("Enter OpenAI API token:", type="password")
+        submit_button = st.form_submit_button("Set API Key")
+
+        if submit_button:
+            if not api_key.startswith("sk-"):
+                st.warning("Please enter a valid OpenAI API token!", icon="⚠️")
+            else:
+                openai.api_key = api_key
+                st.success("API key set successfully!", icon="♟️")
+                st.session_state.api_key = api_key
+
+    # Show current API key status
+    if "api_key" in st.session_state and st.session_state.api_key:
+        st.success("Ready to analyze chess positions!", icon="♟️")
+    else:
+        st.warning("Please set your OpenAI API token!", icon="⚠️")
+
+    # Model selection
     model_option = st.selectbox(
         "Select GPT Model:",
         options=[
@@ -410,11 +430,7 @@ with st.sidebar:
         help="Select the OpenAI model to use for analysis.",
     )
 
-    if not (openai.api_key.startswith("sk-")):
-        st.warning("Please enter your OpenAI API token!", icon="⚠️")
-    else:
-        st.success("Ready to analyze chess positions!", icon="♟️")
-
+    # Option Menu
     options = option_menu(
         "Dashboard",
         ["Home", "Analysis", "About"],
