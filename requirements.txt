@@ -1,0 +1,14 @@
+openai==0.28
+streamlit
+streamlit_option_menu
+streamlit_extras
+faiss-cpu
+plotly
+openpyxl
+langchain
+langchain_community
+scipy
+scikit-learn
+python-chess>=1.10.0
+numpy>=1.21.0
+pandas>=1.3.0
