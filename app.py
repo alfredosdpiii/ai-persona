@@ -216,16 +216,123 @@ def generate_arrow_js():
     """
 
 
+def generate_js_functions():
+    return """
+    // Arrow style mapping
+    function getArrowStyle(strength) {
+        const styles = {
+            'brilliant': ['#00ff00', 5],
+            'best': ['#008000', 4],
+            'good': ['#0000ff', 3],
+            'interesting': ['#ffa500', 3],
+            'inaccurate': ['#ffd700', 2],
+            'mistake': ['#ff0000', 2]
+        };
+        return styles[strength] || ['#808080', 2];
+    }
+
+    let currentMove = 0;
+    let isPlaying = false;
+
+    function updatePosition(move, color) {
+        const board = document.querySelector('#board-container');
+        if (!board) return;
+        
+        // Update board state logic here
+        const from = move.substring(0, 2);
+        const to = move.substring(2, 4);
+        
+        // Highlight squares
+        const toSquare = board.querySelector(`[data-square="${to}"]`);
+        if (toSquare) {
+            toSquare.style.backgroundColor = color === 'white' ? 'rgba(144, 238, 144, 0.5)' : 'rgba(135, 206, 235, 0.5)';
+        }
+    }
+
+    function playMove(move, color, strength) {
+        const from = move.substring(0, 2);
+        const to = move.substring(2, 4);
+        
+        // Create and show arrow
+        const arrow = createArrow(from, to, strength);
+        if (arrow) {
+            document.getElementById('board-container').appendChild(arrow);
+            arrow.style.opacity = '1';
+            
+            // Create strength indicator
+            const indicator = document.createElement('div');
+            indicator.classList.add('strength-indicator');
+            indicator.textContent = strength.toUpperCase();
+            indicator.style.backgroundColor = getArrowStyle(strength)[0];
+            document.getElementById('board-container').appendChild(indicator);
+            
+            // Remove after animation
+            setTimeout(() => {
+                arrow.remove();
+                indicator.remove();
+                updatePosition(move, color);
+            }, 1000);
+        }
+    }
+
+    function playAllMoves() {
+        let delay = 0;
+        moves.white.forEach(([move, strength]) => {
+            setTimeout(() => playMove(move, 'white', strength), delay);
+            delay += 1500;
+        });
+        
+        moves.black.forEach(([move, strength]) => {
+            setTimeout(() => playMove(move, 'black', strength), delay);
+            delay += 1500;
+        });
+    }
+
+    function toggleAutoPlay() {
+        const button = document.getElementById('autoplay-button');
+        if (isPlaying) {
+            clearInterval(autoPlayInterval);
+            button.textContent = 'Auto Play';
+            isPlaying = false;
+        } else {
+            button.textContent = 'Stop';
+            isPlaying = true;
+            playAllMoves();
+        }
+    }
+
+    function updateSpeed(speed) {
+        currentSpeed = parseFloat(speed);
+    }
+
+    function resetPosition() {
+        const board = document.querySelector('#board-container');
+        if (board) {
+            // Remove all highlights and arrows
+            const squares = board.querySelectorAll('[data-square]');
+            squares.forEach(square => {
+                square.style.backgroundColor = '';
+            });
+            
+            // Remove any existing arrows
+            const arrows = document.querySelectorAll('.arrow');
+            arrows.forEach(arrow => arrow.remove());
+            
+            // Remove any strength indicators
+            const indicators = document.querySelectorAll('.strength-indicator');
+            indicators.forEach(indicator => indicator.remove());
+        }
+        currentMove = 0;
+    }
+    """
+
+
 def render_chess_board_with_visualization(
     fen, white_moves, black_moves, white_strengths, black_strengths, size=400
 ):
-    """Render chess board with move visualization"""
     board = chess.Board(fen)
-
-    # Generate the base board SVG
     board_svg = chess.svg.board(board=board, size=size, coordinates=True)
 
-    # Create the complete HTML with controls and JavaScript
     html_content = f"""
     <div id="chess-container" style="position: relative; width: {size}px; margin: auto;">
         <style>{generate_move_css()}</style>
@@ -257,14 +364,13 @@ def render_chess_board_with_visualization(
         
         <script>
         {generate_arrow_js()}
+        {generate_js_functions()}
         let currentSpeed = 1;
         let autoPlayInterval = null;
         const moves = {json.dumps({
             'white': list(zip(white_moves, white_strengths)),
             'black': list(zip(black_moves, black_strengths))
         })};
-        
-        // Add the rest of your JavaScript functions here
         </script>
     </div>
     """
