@@ -90,7 +90,13 @@ def is_valid_fen(fen):
 def render_chess_board(fen):
     board = chess.Board(fen)
     svg_board = chess.svg.board(board=board, size=400)
-    return st.svg(svg_board)
+    # Wrap the SVG in HTML and use components.html
+    html_content = f"""
+        <div style="display: flex; justify-content: center; width: 100%;">
+            {svg_board}
+        </div>
+    """
+    st.components.v1.html(html_content, height=450)
 
 
 # Initialize session state
@@ -233,4 +239,3 @@ st.markdown("""
 ---
 Created with ♟️ by  Bryan/AI republic/Generative AI Labs
 """)
-
